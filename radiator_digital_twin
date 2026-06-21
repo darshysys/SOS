@@ -1,0 +1,257 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# operating conditions
+Q_target = 5500 #(W)
+T_coolant_in = 60 #(degC)
+T_air_in = 25 # ambient air temp of 25 assumed (degC)
+v_air = 1.5 # ram air assumed 0 for worst conditions, face velocity assumed to be 1.5 m/s
+
+# fixed geometry (all in m)
+d = 0.032 # common manufacturing value of 32mm chosen as depth of radiator 
+H = 0.35 # range of height assumed as 30-40cm, middle point taken for simulation
+a_tube = 0.002 # dimensions of rectangular tube, height as 2mm
+b_tube = d # width of tube taken equal to depth of radiator
+tube_pitch = 0.010 # height of tube (2mm) + fin space (8mm), used to calculate number of tubes
+D_h = (4*a_tube*b_tube)/(2*(a_tube+b_tube)) # hydraulic diameter of tube
+A_tube = a_tube*b_tube # tube cross sectional area (m^2)
+
+# air properties at 25 degC
+rho_air = 1.225 # density (kg/m^3)
+mu_air = 0.0000186 # viscosity (kg/m*s)
+k_air = 0.026 # thermal conductivity (W/m*K)
+cp_air = 1005 # specific heat capacity (J/kg*K)
+Pr_air = 0.71 # Prandtl number (dimensionless)
+
+# water properties at 57 degC (avg of 60degC and 53degC (approx T_coolant_out))
+rho_water = 984.7
+mu_water = 0.000489
+k_water = 0.651
+cp_water = 4183
+Pr_water = 3.14
+
+# parameter ranges
+sigma_range = np.linspace(500, 3000, 100)    # fin area density (m^2/m^3)
+A_face_range = np.linspace(0.05, 0.40, 100)  # radiator face area (m^2)
+
+# Heat Transfer Calculations
+Q_predicted = np.zeros((len(A_face_range), len(sigma_range))) # results matrix
+W_calculated = np.zeros((len(A_face_range), len(sigma_range))) # width matrix
+
+# air side convection heat transfer coefficient
+Re_air = (rho_air*v_air*d)/mu_air
+Nu_air = 0.664*(Re_air**0.5)*(Pr_air**(1/3))
+h_air = (Nu_air*k_air)/d
+
+# water side convection heat transfer coefficient
+mdot_coolant = 0.2 # CHANGE HERE (rn 12 L/min or 200 g/s)
+n_tubes = int(np.floor(H/tube_pitch)) # number of tubes
+mdot_tube = mdot_coolant/n_tubes # mass flow rate per tube
+v_water = mdot_tube/(rho_water*A_tube) # velocity of water in each tube
+Re_water = (rho_water*v_water*D_h)/mu_water
+Nu_water = 0.023*(Re_water**0.8)*(Pr_water**0.4)
+h_water = (Nu_water*k_water)/D_h
+
+U = 1/((1/h_air)+(1/h_water)) # overall heat transfer coefficient
+
+for i in range(len(A_face_range)):
+    for j in range(len(sigma_range)):
+
+        A_face = A_face_range[i]
+        sigma = sigma_range[j]
+
+        W_calculated[i, j] = A_face/H  # width stored for plotting
+
+        # capacity rates
+        C_air = rho_air*v_air*cp_air*A_face
+        C_water = mdot_coolant*cp_water
+        C_min = min(C_air, C_water)
+        C_max = max(C_air, C_water)
+        C_star = C_min/C_max
+
+        A_fins = sigma*A_face*d  # total surface area in contact
+        NTU = (U*A_fins)/C_min   # number of transfer units
+        epsilon = 1-np.exp((NTU**0.22/C_star)*(np.exp(-C_star*NTU**0.78)-1))
+
+        Q_predicted[i, j] = epsilon*C_min*(T_coolant_in-T_air_in)
+
+# Plotting Heat Rejected with Area and Fin Density
+fig1, ax1 = plt.subplots()
+cf = ax1.contourf(sigma_range, A_face_range, Q_predicted,20)
+fig1.colorbar(cf,ax=ax1)
+ax1.set_xlabel(r'Fin Area Density, $\sigma$ (m$^2$/m$^3$)')
+ax1.set_ylabel(r'Face Area, $A_{face}$ (m$^2$)')
+ax1.set_title('Predicted Heat Rejection Q (W)')
+
+# Critical boundary - minimum requirement
+ax1.contour(sigma_range, A_face_range, Q_predicted, levels=[5500], colors='r', linewidths=2)
+
+# Adding a safety factor of 1.1 (considering all the worst case conditions assumed)
+ax1.contour(sigma_range, A_face_range, Q_predicted, levels=[6050], colors='w', linestyles='--', linewidths=2)
+
+from matplotlib.lines import Line2D
+legend_elements = [
+    Line2D([0], [0], color='r', lw=2, label='Q = 5500W (minimum)'),
+    Line2D([0], [0], color='w', lw=2, linestyle='--', label='Q = 6050W (design target, +10%)'),
+]
+ax1.legend(handles=legend_elements)
+
+# Plot Width of Radiator
+fig2, ax2 = plt.subplots()
+cf2 = ax2.contourf(sigma_range, A_face_range, W_calculated*1000,20)
+cbar2 = fig2.colorbar(cf2, ax=ax2)
+cf2.set_clim(W_calculated.min()*1000, W_calculated.max()*1000)
+ax2.set_xlabel(r'Fin Area Density, $\sigma$ (m$^2$/m$^3$)')
+ax2.set_ylabel(r'Face Area, $A_{face}$ (m$^2$)')
+ax2.set_title('Required Radiator Width (mm)')
+
+ax2.contour(sigma_range, A_face_range, Q_predicted, levels=[5500], colors='r', linewidths=2)
+ax2.contour(sigma_range, A_face_range, Q_predicted, levels=[6050], colors='w', linestyles='--', linewidths=2)
+
+legend_elements_2 = [
+    Line2D([0], [0], color='r', lw=2, label='Q = 5500W (minimum, for reference)'),
+]
+ax2.legend(handles=legend_elements_2)
+
+# Extract exact A_face value from contour at a given sigma
+def extract_contour_xy(ax, sigma_range, A_face_range, Q_predicted, level):
+    fig_tmp, ax_tmp = plt.subplots()
+    cs = ax_tmp.contour(sigma_range, A_face_range, Q_predicted, levels=[level])
+    plt.close(fig_tmp)
+
+    sigma_pts = []
+    A_face_pts = []
+    for segment in cs.allsegs[0]:
+        sigma_pts.extend(segment[:, 0])
+        A_face_pts.extend(segment[:, 1])
+    return np.array(sigma_pts), np.array(A_face_pts)
+
+sigma_contour, A_face_contour = extract_contour_xy(ax1, sigma_range, A_face_range, Q_predicted, 5500)
+
+# Sort by sigma for interpolation
+sort_idx = np.argsort(sigma_contour)
+sigma_sorted = sigma_contour[sort_idx]
+A_face_sorted = A_face_contour[sort_idx]
+
+sigma_query = 1500  # CHANGE HERE
+A_face_min = np.interp(sigma_query, sigma_sorted, A_face_sorted)
+print(f'At sigma = {sigma_query:.0f}, minimum A_face (Q=5500W) = {A_face_min:.4f} m^2')
+
+# Extract the design target line with 10% margin (Q = 6050W)
+sigma_contour2, A_face_contour2 = extract_contour_xy(ax2, sigma_range, A_face_range, Q_predicted, 6050)
+sort_idx2 = np.argsort(sigma_contour2)
+sigma_sorted2 = sigma_contour2[sort_idx2]
+A_face_sorted2 = A_face_contour2[sort_idx2]
+
+A_face_design_target = np.interp(sigma_query, sigma_sorted2, A_face_sorted2)
+print(f'At sigma = {sigma_query:.0f}, design target A_face (Q=6050W, +10%) = {A_face_design_target:.4f} m^2')
+
+# Checking dependency on H
+H_range = np.linspace(0.30, 0.40, 100) # height range of 30-40cm
+
+A_face_fixed = A_face_min # chosen design point
+sigma_fixed = sigma_query # chosen design point
+
+Q_vs_H = np.zeros(H_range.shape)
+
+for m in range(len(H_range)):
+    H_loop = H_range[m]
+
+    n_tubes_loop = int(np.floor(H_loop/tube_pitch))  # this is what is changing
+    mdot_tube_loop = mdot_coolant/n_tubes_loop
+    v_water_loop = mdot_tube_loop/(rho_water*A_tube)
+    Re_water_loop = (rho_water*v_water_loop*D_h)/mu_water
+    Nu_water_loop = 0.023*(Re_water_loop**0.8)*(Pr_water**0.4)
+    h_water_loop = (Nu_water_loop*k_water)/D_h
+
+    U_loop = 1/((1/h_air)+(1/h_water_loop))
+
+    A_total_loop = sigma_fixed*A_face_fixed*d
+    C_air_loop = rho_air*v_air*cp_air*A_face_fixed
+    C_water_loop = mdot_coolant*cp_water
+    C_min_loop = min(C_air_loop, C_water_loop)
+    C_max_loop = max(C_air_loop, C_water_loop)
+    C_star_loop = C_min_loop/C_max_loop
+
+    NTU_loop = (U_loop*A_total_loop)/C_min_loop
+    epsilon_loop = 1-np.exp((NTU_loop**0.22/C_star_loop)*(np.exp(-C_star_loop*NTU_loop**0.78)-1))
+
+    Q_vs_H[m] = epsilon_loop*C_min_loop*(T_coolant_in-T_air_in)
+
+fig3, ax3 = plt.subplots()
+ax3.plot(H_range*1000, Q_vs_H, linewidth=2)
+ax3.set_xlabel('Radiator Height, H (mm)')
+ax3.set_ylabel('Predicted Heat Rejection, Q (W)')
+ax3.axhline(5500, color='r', linestyle='--', label='Minimum Requirement')
+ax3.set_title(r'Sensitivity of Q to Radiator Height ($\sigma$ and $A_{face}$ fixed)')
+ax3.legend()
+# this plot shows us that given an area and fin density, varying height
+# doesn't have a significant change in heat rejection so calculating heat
+# according to fixed height of 350mm for the previous section was fine
+
+# Checking dependency on coolant flow rate
+
+mdot_range_test = np.linspace(0.05, 0.40, 100) # 50 g/s to 400 g/s
+
+A_face_fixed2 = A_face_min # chosen design point
+sigma_fixed2 = sigma_query # chosen design point
+H_fixed = 0.35 # chosen design point
+
+Q_vs_mdot = np.zeros(mdot_range_test.shape)
+
+n_tubes_fixed = int(np.floor(H_fixed/tube_pitch))
+
+for p in range(len(mdot_range_test)):
+    mdot_coolant_test = mdot_range_test[p]
+
+    # water side h (depends on mdot_coolant_test)
+    mdot_tube_test = mdot_coolant_test/n_tubes_fixed
+    v_water_test = mdot_tube_test/(rho_water*A_tube)
+    Re_water_test = (rho_water*v_water_test*D_h)/mu_water
+    Nu_water_test = 0.023*(Re_water_test**0.8)*(Pr_water**0.4)
+    h_water_test = (Nu_water_test*k_water)/D_h
+
+    U_test = 1/((1/h_air)+(1/h_water_test))
+
+    A_total_test = sigma_fixed2*A_face_fixed2*d
+    C_air_test = rho_air*v_air*cp_air*A_face_fixed2
+    C_water_test = mdot_coolant_test*cp_water
+    C_min_test = min(C_air_test, C_water_test)
+    C_max_test = max(C_air_test, C_water_test)
+    C_star_test = C_min_test/C_max_test
+
+    NTU_test = (U_test*A_total_test)/C_min_test
+    epsilon_test = 1-np.exp((NTU_test**0.22/C_star_test)*(np.exp(-C_star_test*NTU_test**0.78)-1))
+
+    Q_vs_mdot[p] = epsilon_test*C_min_test*(T_coolant_in-T_air_in)
+
+fig4, ax4 = plt.subplots()
+ax4.plot(mdot_range_test*1000, Q_vs_mdot, linewidth=2)
+ax4.set_xlabel('Coolant Mass Flow Rate, mdot (g/s)')
+ax4.set_ylabel('Predicted Heat Rejection, Q (W)')
+ax4.axhline(5500, color='r', linestyle='--', label='Minimum Requirement')
+ax4.axvline(200, color='g', linestyle='--', label='Current pump (200 g/s)')
+ax4.axvline(84.3, color='m', linestyle=':', linewidth=1.5, label=r'$C_{min}$ switches to air (84 g/s)')
+ax4.set_title(r'Sensitivity of Q to Coolant Flow Rate ($\sigma$ and $A_{face}$ fixed)')
+ax4.grid(True)
+ax4.legend()
+# at lower mdot, C_min = C_water instead of C_air so Q drastically increases in
+# the start but diminishing returns as later C_water > C_air so Q = C_min*delta_T
+# gets a fixed C_min = C_air, and delta_T only changed by U which isn't
+# affected much by water
+
+# Testing min A_face at diff Fin Densities
+
+sigma_test_points = [500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000]
+
+sigma_q, A_face_q = extract_contour_xy(ax1, sigma_range, A_face_range, Q_predicted, 5500)
+idx = np.argsort(sigma_q)
+sigma_q_sorted = sigma_q[idx]
+A_face_q_sorted = A_face_q[idx]
+
+print(f"{'sigma':<10} {'A_face (m^2)':<15} {'Width (mm)':<12}")
+for s in sigma_test_points:
+    A_face_at_s = np.interp(s, sigma_q_sorted, A_face_q_sorted)
+    W_at_s = A_face_at_s / H * 1000
+    print(f"{s:<10d} {A_face_at_s:<15.4f} {W_at_s:<12.1f}")
+plt.show()

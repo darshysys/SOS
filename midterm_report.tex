@@ -3,7 +3,7 @@
 % --- Packages ---
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
-\geometry{a4paper, margin=1in}
+\geometry{a4paper, margin=1.25in} 
 \usepackage{amsmath, amssymb} 
 \usepackage{graphicx}         
 \usepackage[hidelinks]{hyperref}        
@@ -29,17 +29,31 @@
     frame=lines
 }
 
-% --- Title Page Info ---
-\title{\textbf{Midterm Report: First-Principles Simulations and Cost Optimization of a Process Unit in Python}\\ \large Summer of Science 2026}
-\author{Darsh Raghuvanshi \\ \texttt{25B2224}}
-
 \begin{document}
 
-\maketitle
+\begin{titlepage}
+    \vspace*{\fill} 
+    
+    \begin{center}
+        {\LARGE \textbf{Midterm Report: First-Principles Simulations and Cost Optimization of a Process Unit in Python}}\\[1.5cm]
+        
+        {\Large Summer of Science 2026}\\[2cm]
+        
+        {\large \textbf{Darsh Raghuvanshi}} \\
+        {\large \texttt{25B2224}}
+    \end{center}
+    
+    \vspace*{\fill}
+\end{titlepage}
+
+\setcounter{page}{2}
+
+\newpage
 
 \begin{abstract}
 This midterm report documents the progress made during the first four weeks of the Summer of Science (SOS) project. The primary focus of Phase I has been establishing a foundational understanding of process modeling, solving ordinary differential equations (ODEs), and developing a digital twin for a specific process unit. The chosen unit for this study is a car radiator. This report outlines the mathematical formulation of the governing equations, the implementation of numerical methods (Euler and Runge-Kutta 4) in Python, and the initial dynamic simulations of the unit.
 \end{abstract}
+\newpage
 
 \tableofcontents
 \newpage
@@ -124,7 +138,7 @@ Sweeping the model across the full $(\sigma, A_{face})$ grid produces the heat r
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{heat_rejection_contour.png}
+    \includegraphics[width=0.85\textwidth]{heat_rejection_contour.jpeg}
     \caption{Predicted heat rejection $Q$ across the swept fin area density ($\sigma$) and face area ($A_{face}$) design space. The red line marks the 5500~W minimum requirement; the white dashed line marks the 6050~W design target with 10\% margin.}
     \label{fig:heat_contour}
 \end{figure}
@@ -133,7 +147,7 @@ At a representative fin density of $\sigma = 1500$~m\textsuperscript{2}/m\textsu
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{width_contour.png}
+    \includegraphics[width=0.85\textwidth]{width_contour.jpeg}
     \caption{Required radiator width (mm) across the same design space, with the 5500~W and 6050~W thermal boundaries overlaid for reference.}
     \label{fig:width_contour}
 \end{figure}
@@ -143,7 +157,7 @@ Two sensitivity studies were performed to test the validity of design decisions 
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.75\textwidth]{height_sensitivity.png}
+    \includegraphics[width=0.75\textwidth]{height_sensitivity.jpeg}
     \caption{Sensitivity of predicted heat rejection to core height $H$, with fin density and face area held fixed at the chosen design point.}
     \label{fig:height_sensitivity}
 \end{figure}
@@ -152,10 +166,22 @@ The second sensitivity study examined coolant mass flow rate, swept from 50 to 4
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.75\textwidth]{mdot_sensitivity.png}
+    \includegraphics[width=0.75\textwidth]{mdot_sensitivity.jpeg}
     \caption{Sensitivity of predicted heat rejection to coolant mass flow rate, showing the capacity-rate crossover near 84~g/s and the current pump's operating point at 200~g/s.}
     \label{fig:mdot_sensitivity}
 \end{figure}
+
+\section{Assumptions and Limitations}
+To construct a mathematical model and digital twin of the process unit, several standard engineering assumptions were made. It is critical to define these idealizations to understand the boundaries within which the model's predictions remain valid.
+
+\subsection{Thermal Assumptions}
+First, the conductive thermal resistance of the aluminum tube and fin walls was neglected entirely. Automotive heat exchangers are manufactured from highly conductive aluminum alloys with extremely thin profiles to reduce weight. Calculating the Biot number for these fins confirms that internal temperature gradients within the metal itself are negligible compared to the convective temperature gradients in the air and water boundary layers. Second, the specific heat capacities of both the coolant ($C_{p,c}$) and the air ($C_{p,air}$) were treated as constants, evaluated at their respective bulk mean temperatures. While specific heat does vary slightly with temperature, the operational $\Delta T$ across the radiator is small enough that assuming constant properties introduces minimal error. Finally, the exterior of the radiator unit is assumed to be adiabatic; no secondary convective heat loss to the surrounding engine bay environment is factored into the primary energy balance.
+
+\subsection{Fluid Dynamics Assumptions}
+On the fluid mechanics side, both the coolant and the air were modeled as incompressible fluids. While water is inherently incompressible, air is compressible; however, because the air velocities induced by the cooling fan (1.5 m/s) result in a Mach number far below the 0.3 threshold, the assumption of incompressible flow is physically justified. Furthermore, the model assumes a perfectly uniform air velocity profile across the entire face area ($A_{face}$) of the radiator. In a practical vehicle application, airflow is highly non-uniform due to obstructions from the bumper, grille, and the hub of the axial cooling fan itself. 
+
+\subsection{Model Limitations}
+The current iteration of the digital twin relies on a steady-state sizing methodology (the Epsilon-NTU method). This means the model calculates the ultimate equilibrium state of the heat transfer but cannot capture transient thermal behaviors, such as the system's "heat soak" during sudden acceleration spikes. Additionally, the overall heat transfer coefficient ($U$) assumes ideal, factory-clean surfaces. The model currently lacks a fouling factor to account for the buildup of dust, debris, or internal scaling that inevitably degrades thermal performance over the lifespan of a vehicle.
 
 \section{Conclusion and Next Steps}
 The first four weeks have successfully established a mathematical and computational foundation for simulating a car radiator. The numerical solvers have been validated, the governing differential equations have been successfully digitized, and the physical plausibility of the model holds true. 

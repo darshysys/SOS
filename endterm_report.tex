@@ -1,0 +1,333 @@
+\documentclass[12pt, a4paper]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=1.25in} 
+\usepackage{amsmath, amssymb} 
+\usepackage{graphicx}         
+\usepackage[hidelinks]{hyperref}        
+\usepackage{listings}         
+\usepackage{xcolor}           
+\usepackage{booktabs}
+\usepackage{float}         
+
+% --- Code Block Settings ---
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue},
+    stringstyle=\color{teal},
+    commentstyle=\color{green!50!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=8pt,
+    backgroundcolor=\color{gray!5},
+    showstringspaces=false,
+    breaklines=true,
+    frame=lines
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \vspace*{\fill} 
+    
+    \begin{center}
+        {\LARGE \textbf{Endterm Report: First-Principles Simulations and Cost Optimization of a Process Unit in Python}}\\[1.5cm]
+        
+        {\Large Summer of Science 2026}\\[2cm]
+        
+        {\large \textbf{Darsh Raghuvanshi}} \\
+        {\large \texttt{25B2224}}
+    \end{center}
+    
+    \vspace*{\fill}
+\end{titlepage}
+
+\setcounter{page}{2}
+
+\newpage
+
+\begin{abstract}
+This report involves the progress throughout my Summer of Science (SoS) project. It includes first studying about process units and choosing one to pursue through the course of this project. It also involved learning python and important libraries such as NumPy and matplotlib which would later be essential in building the digitial twin of the chosen process unit which was a car radiator. I also learned how to solve ODE's using numerical methods such as Euler method and Runge-Kutta (RK4) method. Later on it allows assessing Key Performance Indicators (KPI) and implementing a cost function (CAPEX and OPEX) and then optimizing to minimize cost.
+\end{abstract}
+\newpage
+
+\tableofcontents
+\newpage
+
+\section{Week 1: Process Unit Selection and Problem Definition}
+
+\subsection{Introduction to the Chosen Unit}
+The process unit for this project is a car radiator. At its core, a radiator is a heat exchanger that continuously pulls thermal energy away from the vehicle's motors and controllers and dumps it into the surrounding air. If it fails to do this fast enough, coolant temperatures climb past acceptable limits and things start breaking.
+
+\subsection{Justification and Process Variables}
+What drew me to this particular unit is that it is a genuine multi-objective design problem. You want to reject as much heat as possible, but you also need the unit to be light, aerodynamically inoffensive, and small enough to actually fit in the car. Those goals do not all point in the same direction.
+
+The key variables that determine how well a radiator performs are the coolant mass flow rate, the physical dimensions of the core (length, breadth, and thickness), and geometric details like fin spacing and tube density. Fin density is particularly interesting because it cuts both ways: pack the fins tighter and you get more heat transfer surface area, but pressure drop goes up and the fan has to work harder. Getting this balance right is exactly the kind of problem that calls for a proper computational model rather than back-of-envelope guessing.
+
+\subsection{Initial Value Problems (IVPs) and Boundary Value Problems (BVPs)}
+Before writing any simulation code, I went back to the theory on IVPs, BVPs, and simultaneous ODEs. For the radiator model, the IVP framing is the natural one: given a known coolant temperature at $t = 0$, how does it evolve over time under a given heat load? The BVP framework becomes relevant once spatial variation along the flow path is considered. Having this distinction clear from the start made the Week 2 modeling considerably cleaner.
+
+\section{Week 2: Mathematical Modeling and Numerical Methods}
+
+\subsection{Numerical Solvers}
+Two solvers were implemented in Python: the Euler method and RK4. Before touching the radiator model, both were tested on standard mathematical problems to make sure they were producing correct results.
+
+\subsubsection{Test Problem 1}
+The first problem solved was the IVP over the interval from $t = 0$ to $2$ with a step size of $0.2$, given $y(0) = 1$:
+\begin{equation}
+    \frac{dy}{dt} = y t^3 - 1.5y
+\end{equation}
+
+\subsubsection{Test Problem 2}
+The second problem involved a system of simultaneous ODEs solved over $t = 0$ to $1$ with step size $0.2$, given initial conditions $y(0) = 2$ and $z(0) = 4$:
+\begin{equation}
+    \frac{dy}{dt} = -2y + 4e^{-t}
+\end{equation}
+\begin{equation}
+    \frac{dz}{dt} = \frac{-yz^3}{3}
+\end{equation}
+
+\subsection{Governing Equations for the Car Radiator}
+The radiator's governing equation comes from an energy balance on the coolant side. Assuming incompressible flow and constant specific heats, the lumped-capacitance form is:
+\begin{equation}
+    M_c C_{p,c} \frac{dT_{c,out}}{dt} = \dot{m}_c C_{p,c} (T_{c,in} - T_{c,out}) - U A (T_{c,avg} - T_{air})
+\end{equation}
+where $M_c$ is the coolant mass inside the radiator, $C_{p,c}$ is specific heat, $\dot{m}_c$ is mass flow rate, $U$ is the overall heat transfer coefficient, and $A$ is the heat transfer surface area. Reading this left to right: the rate of change of stored thermal energy equals what the incoming hot coolant brings in, minus what the outgoing cooled coolant carries away, minus what actually gets rejected to the air. The last term is where the geometry lives, since $A$ depends directly on the fin and tube configuration.
+
+\section{Week 3: Radiator Sizing with the Epsilon-NTU Method}
+
+\subsection{Methodology}
+After establishing the energy balance, the modeling focus shifted to a different but related question: given a fixed heat load and known inlet conditions, what does the radiator core physically need to look like to reject that heat reliably? This is a sizing problem, not a simulation problem, and it called for a different method.
+
+The LMTD approach was ruled out early. It requires both fluid outlet temperatures to be known before you can compute anything, which is circular when the air outlet temperature is itself one of the unknowns. The Epsilon-NTU method avoids this by working from inlet conditions and NTU alone, which is exactly what a forward design problem needs.
+
+The radiator was modeled as a crossflow heat exchanger with both fluids unmixed, the standard assumption for a finned tube-and-fin core with air flowing perpendicular to the coolant tubes. One modeling choice worth explaining: the common simplification of taking $C^* \approx 0$ (valid only when one fluid's capacity rate vastly exceeds the other's) was deliberately not used. Over part of the relevant design space, the air-side and coolant-side capacity rates are comparable in magnitude, and using the simplified form would have introduced real error. The full crossflow effectiveness correlation was used throughout:
+\begin{equation}
+    \varepsilon = 1 - \exp\left[\frac{NTU^{0.22}}{C^*}\left(\exp\left(-C^* \, NTU^{0.78}\right) - 1\right)\right]
+\end{equation}
+
+The worst-case operating point was defined as fan-only cooling with no ram-air contribution (the scenario where the vehicle is moving slowly under peak motor load and forced convection from vehicle motion cannot be relied on), a minimum face velocity of 1.5~m/s from the electric fan, ambient air at $25^\circ$C, and a coolant inlet of $60^\circ$C (the maximum permissible temperature for the motor cooling loop). Designing to this specific combination means any radiator that clears the resulting area requirement will handle all less demanding conditions without issue.
+
+Heat transfer coefficients on each side were computed independently since the air and coolant sides operate in very different flow regimes. On the air side, flow over the fins was treated as laminar flow over a flat plate:
+\begin{equation}
+    Nu_{air} = 0.664\,Re_{air}^{0.5}\,Pr_{air}^{1/3}
+\end{equation}
+Coolant flow inside the tubes, which is turbulent at the relevant flow rates, was modeled with the Dittus-Boelter correlation:
+\begin{equation}
+    Nu_{water} = 0.023\,Re_{water}^{0.8}\,Pr_{water}^{0.4}
+\end{equation}
+These give $h_{air}$ and $h_{water}$, which combine into the overall heat transfer coefficient:
+\begin{equation}
+    U = \left(\frac{1}{h_{air}} + \frac{1}{h_{water}}\right)^{-1}
+\end{equation}
+The wall conductive resistance was neglected, which is standard practice for thin-walled aluminium cores.
+
+\subsection{Design Tool and Key Decisions}
+The thermal model was turned into a design tool by building a NumPy and matplotlib script that sweeps two free variables, fin area density $\sigma$ (m\textsuperscript{2}/m\textsuperscript{3}) and face area $A_{face}$, across a $100 \times 100$ grid. At each grid point, the script computes capacity rates, NTU, effectiveness, and predicted heat rejection $Q$. The result is a full performance map rather than a single number, which makes the trade-offs between fin density and physical footprint directly visible.
+
+Core depth ($d = 32$~mm) and height ($H = 350$~mm) were fixed rather than swept. This is not a modeling shortcut; it reflects a real constraint. Both dimensions are largely dictated by available manufactured core stock and by packaging limits from the rest of the vehicle team. A sensitivity study (described below) confirmed that fixing them does not compromise the thermal analysis.
+
+Something interesting came out of comparing the two convective resistances: $h_{air}$ sat around 26~W/m\textsuperscript{2}K while $h_{water}$ ranged from a few hundred to several thousand W/m\textsuperscript{2}K depending on flow rate. The air side so thoroughly dominates the series combination that $U$ is effectively constant across the entire $(\sigma, A_{face})$ sweep for fixed face velocity and depth. That is a useful result because it means the grid computation simplifies considerably.
+
+Radiator width was treated as a derived quantity. Since $A_{face} = W \times H$ and $H$ is fixed, width follows directly from the chosen face area. This let the feasibility map be re-expressed in terms of width rather than face area, which is a more immediately useful number for the packaging team.
+
+A 10\% design margin was added to the nominal 5500~W requirement, giving a secondary target of 6050~W. The margin was kept intentionally modest because the baseline assumptions are already conservative: no ram air, minimum fan speed, full crossflow correlation. The 10\% exists to cover uncertainty in the empirical correlations and manufacturing tolerances, not to compensate for optimistic inputs.
+
+\subsection{Results}
+Sweeping the model across the full $(\sigma, A_{face})$ grid produces the heat rejection map in Figure~\ref{fig:heat_contour}, with the 5500~W and 6050~W boundaries overlaid. Both higher fin density and larger face area increase $Q$, as expected. But the gains flatten out at high $\sigma$. Past a certain point, adding more fin surface area barely moves the needle because the exchanger is already limited by air-side resistance, and more fins do not change that.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{heat_rejection_contour.png}
+    \caption{Predicted heat rejection $Q$ across the swept fin area density ($\sigma$) and face area ($A_{face}$) design space. The red line marks the 5500~W minimum requirement; the white dashed line marks the 6050~W design target with 10\% margin.}
+    \label{fig:heat_contour}
+\end{figure}
+
+At $\sigma = 1500$~m\textsuperscript{2}/m\textsuperscript{3}, the minimum face area to meet 5500~W is $A_{face} \approx 0.191$~m\textsuperscript{2}, rising to $A_{face} \approx 0.213$~m\textsuperscript{2} with the margin. At a fixed core height of 350~mm, that means a radiator width of roughly 546 to 608~mm. Re-expressing this in terms of width gives Figure~\ref{fig:width_contour}, where the packaging trade-off is immediately readable: going to a denser fin structure allows a meaningfully narrower core for the same thermal output, at the cost of higher pressure drop.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{width_contour.png}
+    \caption{Required radiator width (mm) across the same design space, with the 5500~W and 6050~W thermal boundaries overlaid for reference.}
+    \label{fig:width_contour}
+\end{figure}
+
+\subsection{Sensitivity Analysis}
+Two sensitivity studies were run to check assumptions made during modeling.
+
+The first looked at core height. With $\sigma$ and $A_{face}$ held at the design point, $H$ was swept from 300 to 400~mm. The result is in Figure~\ref{fig:height_sensitivity}. Predicted heat rejection varies by less than 0.5\% across that entire range. Core height can safely be set by packaging considerations alone. One detail worth noting: the small staircase pattern in the curve is not a numerical artifact. The number of coolant tubes that fit within a given height has to be an integer, so $Q$ steps up in small discrete jumps as height crosses each tube-pitch boundary. That is a real physical effect.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{height_sensitivity.png}
+    \caption{Sensitivity of predicted heat rejection to core height $H$, with fin density and face area held fixed at the chosen design point.}
+    \label{fig:height_sensitivity}
+\end{figure}
+
+The second study swept coolant mass flow rate from 50 to 400~g/s with all geometric parameters fixed. The curve in Figure~\ref{fig:mdot_sensitivity} shows a capacity-rate crossover at around $\dot{m} \approx 84$~g/s. Below that value, water has the smaller capacity rate ($C_{min} = C_{water}$), so more flow means meaningfully more heat rejection. Above it, the coolant's capacity rate overtakes the air's and $C_{min}$ becomes fixed at $C_{air}$. Past that point, increasing pump flow rate gives almost nothing back; the only improvement pathway left is a very weak increase in $U$ through $h_{water}$, and that effect is small. The current pump runs at around 200~g/s, well into this plateau. That is probably worth looking at in Phase II. A smaller, lighter pump might give up almost nothing thermally while saving weight.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{mdot_sensitivity.png}
+    \caption{Sensitivity of predicted heat rejection to coolant mass flow rate, showing the capacity-rate crossover near 84~g/s and the current pump's operating point at 200~g/s.}
+    \label{fig:mdot_sensitivity}
+\end{figure}
+
+
+\section{Week 5: Sensitivity Analysis}
+
+\subsection{Methodology and Design Point}
+To advance the digital twin toward structural optimization, a fixed design point was established to serve as the baseline for all subsequent isolated parameter sweeps. The primary key performance indicator (KPI) remained the predicted steady-state heat rejection $Q$ (W). The fixed design variables were set to: a fin area density of $\sigma = 1500$~m\textsuperscript{2}/m\textsuperscript{3}, a face area of $A_{face} = 0.1910$~m\textsuperscript{2}, a fixed core height of $H = 0.35$~m, and a coolant mass flow rate of $\dot{m} = 0.2$~kg/s (200~g/s). 
+
+To ensure consistency across all manual sweeps and future optimizing evaluations, a central helper function \texttt{compute\_Q(sigma, A\_face, H, mdot)} was authored. This function encapsulates the entirety of the Epsilon-NTU physics established in Week 3, ensuring unified thermal calculations across the codebase.
+
+\subsection{One-Dimensional Parameter Sweeps}
+To deeply analyze the thermal bottlenecks, two primary one-dimensional sweeps were executed around the fixed baseline.
+
+The first parameter investigated was the fin area density, $\sigma$. With $A_{face}$, $H$, and $\dot{m}$ clamped at the design point, $\sigma$ was linearly swept from 500 to 3000~m\textsuperscript{2}/m\textsuperscript{3}. The resulting trend shows that $Q$ increases steeply at lower values of $\sigma$ where available surface area restricts heat transfer. However, the curve noticeably flattens as it crosses the $\approx 1500$~m\textsuperscript{2}/m\textsuperscript{3} threshold, validating that the radiator has entered an air-side-resistance-limited regime. Pushing $\sigma$ higher yields severely diminishing thermal returns while aggressively worsening the required pressure drop and fan work.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{q_vs_sigma.png}
+    \caption{Sensitivity of heat rejection $Q$ to varying fin area density $\sigma$. Above 1500~m\textsuperscript{2}/m\textsuperscript{3}, the plot plateaus which represents the transition into an air-side-resistance-dominated operational state.}
+    \label{fig:w5_sigma}
+\end{figure}
+
+The second sweep focused on the face area, $A_{face}$, varied between 0.05 and 0.40~m\textsuperscript{2} while holding $\sigma$, $H$, and $\dot{m}$ constant. The analysis demonstrated that $Q$ scales near-linearly with $A_{face}$ precisely around the design baseline, proving that face area is the most important factor for optimizing heat rejection. Conversely, dropping $A_{face}$ below approximately 0.15~m\textsuperscript{2} triggers a sharp decline in $Q$, decisively breaching the 5500~W lower limit constraint.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{q_vs_area.png}
+    \caption{Sensitivity of heat rejection $Q$ to varying face area $A_{face}$. The linear correlation indicates that enlarging the physical face area is a direct, proportional method to increase heat rejection.}
+    \label{fig:w5_aface}
+\end{figure}
+
+\subsection{Two-Dimensional Heatmap: Fin Density vs. Mass Flow Rate}
+To produce more actionable design insights, a 2D heatmap was generated over an $80 \times 80$ grid by sweeping $\sigma$ (500--3000~m\textsuperscript{2}/m\textsuperscript{3}) against $\dot{m}$ (50--400~g/s), keeping geometry fixed. This visualization successfully illustrates the critical trade-off between fluid pump sizing and core fin density, improving upon the static mapping from Week 3. Contour boundary lines demarcating 5500~W and 6050~W were directly overlaid on the array.
+
+The fundamental physical finding derived from this heatmap is that a low-$\sigma$ core necessitates a heavily up-rated mass flow rate to maintain target thermal compensation. Yet, once the system crosses the critical threshold where $C_{min}$ flips to the air-side (at approximately 84~g/s), the 5500~W contour boundary flattens completely. Flow beyond this specific breakpoint yields zero effective thermal enhancement.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{q_contour_sigma_mdot.png}
+    \caption{Heatmap correlating fin area density $\sigma$ against coolant mass flow rate $\dot{m}$. The 5500~W contour line is flattening beyond 84~g/s demonstrating that excessive pump flow provides zero return on investment when $C_{min}$ is bottlenecked by the air side.}
+    \label{fig:w5_heatmap}
+\end{figure}
+
+
+\section{Week 6: Cost Function and Gradient Descent}
+
+\subsection{Defining the Cost Objective}
+Before any computational optimization could occur, the qualitative goals needed to be translated into a rigid mathematical objective. The chosen figure of merit was the Cost per Watt of cooling capacity (\$/W), defined as the Total Annualized Cost (TAC) divided by the required design point heat rejection ($Q_{design}$). This metric is universally recognized in heat exchanger design because it directly quantifies the financial efficiency of rejecting heat.
+
+The overall cost model synthesized Capital Expenditure (CAPEX) and Operating Expenditure (OPEX). The CAPEX was strictly annualized over a projected 3-season racing lifecycle. With an assumed discount rate of 8\%, the resultant Capital Recovery Factor (CRF) equates to 0.3880/yr. The CAPEX incorporates:
+\begin{itemize}
+    \item \textbf{Core Aluminium Body:} Evaluated as $\rho_{Al} \times C_{Al} \times V_{core}$, where $\rho_{Al} = 2700$~kg/m\textsuperscript{3}, the raw material cost is $C_{Al} = \$2.5$/kg, and the core volume is $V_{core} = A_{face} \times d$.
+    \item \textbf{Fin Sheet Fabrication:} Evaluated as $C_{fin} \times A_{fin\_total}$, applying a fabrication overhead of $C_{fin} = \$0.8$/m\textsuperscript{2} to the cumulative fin area $A_{fin\_total} = \sigma \times A_{face} \times d$.
+\end{itemize}
+
+The OPEX was calculated on a per-season basis, modeling 200 active operating hours with electrical energy priced at \$0.15/kWh:
+\begin{itemize}
+    \item \textbf{Fan Power Consumption:} $P_{fan} = \Delta P_{air} \times Q_{vol\_air} / \eta_{fan}$. The air-side pressure drop was modeled via the Darcy-Weisbach equation assuming laminar flow through the fin channels (hydraulic diameter $D_{h\_fin} = 2 \times 8$~mm = 16~mm), assuming a fan efficiency of $\eta_{fan} = 0.55$.
+    \item \textbf{Pump Power Consumption:} $P_{pump} = \Delta P_{water} \times Q_{vol\_water} / \eta_{pump}$. This utilized the standard Blasius friction factor for turbulent tube flow and a conservative pump efficiency of $\eta_{pump} = 0.60$.
+\end{itemize}
+
+A key realization emerged upon evaluating the established baseline design ($\sigma = 1500$~m\textsuperscript{2}/m\textsuperscript{3}, $A_{face} = 0.1910$~m\textsuperscript{2}): the CAPEX stood at \$18.8534/yr while the OPEX was vanishingly small at roughly \$0.0021/yr. The radiator is almost purely a capital cost object. Consequently, any algorithm employed will be driven essentially to minimize the physical volume to trim CAPEX. The initial baseline state yielded $Q = 5500.2$~W, a TAC of \$18.8555/yr, mapping to a metric of \$0.003428/W.
+
+\subsection{Validation of the Gradient Descent Algorithm}
+To ensure robustness, a custom gradient descent (GD) algorithm was scripted and validated against the non-convex Rosenbrock test function:
+\begin{equation}
+    f(x,y) = (1-x)^2 + 100(y-x^2)^2
+\end{equation}
+This function possesses a deep, curved valley converging to a global minimum at $(1,1)$ where $f=0$. The analytical gradients supplied to the solver were:
+\begin{align}
+    \frac{\partial f}{\partial x} &= -2(1-x) - 400x(y-x^2) \\
+    \frac{\partial f}{\partial y} &= 200(y-x^2)
+\end{align}
+
+Initialized at coordinates $(-1, 1)$ yielding $f = 4.0$, the optimizer utilized a learning rate of 0.002 and a hard cap of 50,000 iterations. It successfully converged to $(0.9976, 0.9987)$ with a final objective value of $f = 1.26 \times 10^{-3}$, satisfactorily proving its capability to locate the global minimum.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{gradient_descent.png}
+    \caption{Two-panel validation of the Gradient Descent solver against the Rosenbrock test function. The left panel verifies log-scale convergence without divergence, and the right panel traces how the algorithm successfully navigate the contour topology toward the absolute minimum.}
+    \label{fig:w6_rosenbrock}
+\end{figure}
+
+
+\section{Week 7: Optimization}
+
+\subsection{Optimization Problem Setup}
+With a validated solver and cost framework, the core design optimization was finalized. The mathematical objective was strictly to minimize the cost per watt (\$/W) using two bounded free variables:
+\begin{itemize}
+    \item $\sigma \in [500, 3000]$~m\textsuperscript{2}/m\textsuperscript{3}
+    \item $A_{face} \in [0.05, 0.40]$~m\textsuperscript{2}
+\end{itemize}
+The parameters $H$ and $\dot{m}$ were locked at 0.35~m and 0.2~kg/s, respectively. The non-linear physical constraint imposed on the system was that steady-state heat rejection must remain viable: $Q(\sigma, A_{face}) \geq 5500$~W.
+
+\subsection{Implementation and Results}
+Two separate numerical methodologies were applied to rigorously cross-verify the results.
+
+\textbf{Method 1: Projected Gradient Descent} \\
+The custom gradient descent logic was heavily augmented to handle numerical constraints. Central finite differences ($h = 1 \times 10^{-4}$) were used since analytical derivatives for the Epsilon-NTU physics are practically impossible. The $Q \geq 5500$~W inequality constraint was implemented as a quadratic penalty function dynamically added to the objective: $\text{penalty\_weight} = 5 \times 10^4 \times \max(0, 5500 - Q)^2$. Variable bounds were enforced through step-wise clipping. A backtracking line search was deployed to dynamically halve the step size (up to 30 iterations) until the objective safely decreased, supplemented by a step recovery factor ($\min(\text{step} \times 1.05, lr)$). 
+
+\textbf{Method 2: SciPy SLSQP} \\
+The native \texttt{scipy.optimize} Sequential Least Squares Programming (SLSQP) algorithm was instantiated. SLSQP natively handles multi-variate non-linear inequality boundaries without relying on arbitrary penalties. Run with an absolute tolerance of $ftol = 1 \times 10^{-10}$ and a 500-iteration maximum, the algorithm terminated successfully.
+
+\subsection{Physical Interpretation of the Optimum}
+The results identically align with theoretical expectations: both mathematical optimizers found that the absolute cost minimum resides precisely at the constraint boundary where $Q = 5500$~W. Because CAPEX scales linearly with geometry and OPEX is insignificant, the computationally "cheapest" radiator is mathematically equivalent to the physically smallest viable unit. The design space cost topology monotonically decreases alongside $A_{face}$ right up until the thermal limit forces a hard stop. The custom GD yielded \$0.003429/W whereas SLSQP yielded \$0.003428/W---a 0.02\% variation completely attributable to the numerical tolerance limits of the custom penalty function method.
+
+\begin{table}[H]
+    \centering
+    \caption{Quantitative comparison between the starting baseline design and the final states yielded by the Gradient Descent and SLSQP optimizers.}
+    \begin{tabular}{lccc}
+        \toprule
+        \textbf{Parameter} & \textbf{Baseline} & \textbf{Custom GD} & \textbf{SciPy SLSQP} \\
+        \midrule
+        $\sigma$ (m\textsuperscript{2}/m\textsuperscript{3}) & 1500.0 & 1500.0 & 1500.0 \\
+        $A_{face}$ (m\textsuperscript{2}) & 0.1910 & 0.1913 & 0.1910 \\
+        Width (mm) & 545.7 & 546.5 & 545.7 \\
+        $Q$ (W) & 5500.2 & 5507.1 & 5500.0 \\
+        CAPEX ann. (\$/yr) & 18.8534 & 18.8802 & 18.8528 \\
+        OPEX (\$/yr) & 0.0021 & 0.0021 & 0.0021 \\
+        TAC (\$/yr) & 18.8555 & 18.8823 & 18.8550 \\
+        Cost/W (\$/W) & 0.003428 & 0.003429 & 0.003428 \\
+        Cost reduction & -- & $-0.02\%$ & $0.00\%$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{cost_per_watt.png}
+    \caption{Cost per watt contour map spanning the available design variables. The baseline, GD, and SLSQP optimal solutions are packed tightly onto the minimum valid thermal constraint curve, physically validating that shrinking the core dominates cost efficiency.}
+    \label{fig:w7_costmap}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{cost_breakdown.png}
+    \caption{Stacked comparative bar chart illustrating CAPEX vs OPEX for the finalized models. There is an extreme disproportion in the cost model, driving the algorithms to exclusively prioritize geometric volume minimization.}
+    \label{fig:w7_breakdown}
+\end{figure}
+
+
+\section{Assumptions and Limitations}
+
+\subsection{Thermal Assumptions}
+The conductive resistance of the aluminium tube and fin walls was dropped entirely. Automotive cores use highly conductive aluminium alloys with very thin cross-sections; a Biot number check confirms the temperature gradients inside the metal are negligible compared to those in the air and water boundary layers. Specific heats for both the coolant and air were treated as constants evaluated at bulk mean temperatures. The temperature change across the radiator is small enough that this is a reasonable call. The exterior of the radiator was also assumed adiabatic, so secondary heat loss to the engine bay is not captured.
+
+\subsection{Fluid Dynamics Assumptions}
+Both fluids were modeled as incompressible. Water always is. Air at 1.5~m/s fan velocity has a Mach number far below 0.3, so treating it as incompressible is fine here. The model also assumes perfectly uniform airflow across the full face area. In reality, the bumper, grille, and fan hub all create significant non-uniformity. Of all the assumptions in this model, that one is probably the least defensible in a real vehicle environment.
+
+\subsection{Model Limitations}
+The digital twin is a steady-state tool. It cannot track transient behavior: it gives you the equilibrium heat rejection for a set of conditions, not how the system gets there. Heat soak during a sudden load spike, for example, is outside what this model can capture. The overall coefficient $U$ also assumes clean surfaces with no fouling. Dust, debris, and internal scaling will degrade performance over the vehicle's life, and the model currently has no way to account for that.
+
+\section{Conclusion}
+Over the seven-week development period, this project evolved from theoretical process unit selection into a fully functional, first-principles digital twin of a car radiator. By pairing the Epsilon-NTU thermal model with comprehensive sensitivity analyses, the system's physical bottlenecks—specifically the air-side thermal resistance and the fluid capacity-rate crossover—were clearly isolated. Translating these thermal constraints into a financial framework revealed that capital expenditure heavily dominates operating costs, shifting the engineering priority strictly toward volume minimization. The successful application of both custom Projected Gradient Descent and SciPy's SLSQP algorithms, which independently converged precisely on the $Q = 5500$ W boundary, validated the robustness of the optimization pipeline. Ultimately, this computational toolset not only dictates the most cost-efficient radiator geometry for the vehicle but also establishes a reusable, mathematically rigorous framework for solving complex, multi-objective thermal packaging challenges.
+
+\end{document}

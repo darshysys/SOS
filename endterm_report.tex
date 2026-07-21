@@ -330,4 +330,10 @@ The digital twin is a steady-state tool. It cannot track transient behavior: it 
 \section{Conclusion}
 Over the seven-week development period, this project evolved from theoretical process unit selection into a fully functional, first-principles digital twin of a car radiator. By pairing the Epsilon-NTU thermal model with comprehensive sensitivity analyses, the system's physical bottlenecks—specifically the air-side thermal resistance and the fluid capacity-rate crossover—were clearly isolated. Translating these thermal constraints into a financial framework revealed that capital expenditure heavily dominates operating costs, shifting the engineering priority strictly toward volume minimization. The successful application of both custom Projected Gradient Descent and SciPy's SLSQP algorithms, which independently converged precisely on the $Q = 5500$ W boundary, validated the robustness of the optimization pipeline. Ultimately, this computational toolset not only dictates the most cost-efficient radiator geometry for the vehicle but also establishes a reusable, mathematically rigorous framework for solving complex, multi-objective thermal packaging challenges.
 
+\section*{References}
+\addcontentsline{toc}{section}{References}
+\begin{enumerate}
+    \textit{SOS: First-Principles Simulation and Cost Optimization of a Car Radiator}. GitHub repository. \url{https://github.com/darshysys/SOS}
+\end{enumerate}
+
 \end{document}
